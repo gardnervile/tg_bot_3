@@ -1,0 +1,35 @@
+# Виртуальное окружение
+venv/
+env/
+
+# Python-файлы
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Логи
+*.log
+
+# Секреты и переменные окружения
+.env
+.env.*
+
+# Файлы IDE
+.idea/
+.vscode/
+*.swp
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Базы данных и дампы
+*.sqlite3
+*.db
+*.sql
+
+# pyinstaller
+dist/
+build/
+*.spec
