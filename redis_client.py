@@ -1,21 +1,36 @@
-import os, redis
+import os
+import redis
 from dotenv import load_dotenv
 
-def make_redis():
-    load_dotenv()
-    host = os.getenv("REDIS_HOST", "localhost")
-    port = int(os.getenv("REDIS_PORT", "6379"))
-    password = os.getenv("REDIS_PASSWORD")
-    ssl_enabled = os.getenv("REDIS_SSL", "false").lower() in ("1", "true", "yes")
 
+def get_redis_client(
+    host: str,
+    port: int,
+    username: str | None = None,
+    password: str | None = None,
+    ssl_enabled: bool = False,
+) -> redis.Redis:
     return redis.Redis(
         host=host,
         port=port,
-        username=os.getenv("REDIS_USERNAME"),
+        username=username,
         password=password,
         ssl=ssl_enabled,
-        decode_responses=True
+        decode_responses=True,
     )
 
-r = make_redis()
-print(r.ping())
+def main():
+    load_dotenv()
+
+    host = os.getenv("REDIS_HOST", "localhost")
+    port = int(os.getenv("REDIS_PORT", "6379"))
+    username = os.getenv("REDIS_USERNAME")
+    password = os.getenv("REDIS_PASSWORD")
+    ssl_enabled = os.getenv("REDIS_SSL", "false").lower() in ("1", "true", "yes")
+
+    redis_client = get_redis_client(host, port, username, password, ssl_enabled)
+    print("Redis connected:", redis_client.ping())
+
+
+if __name__ == "__main__":
+    main()
