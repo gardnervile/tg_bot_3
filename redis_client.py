@@ -3,13 +3,7 @@ import redis
 from dotenv import load_dotenv
 
 
-def get_redis_client(
-    host: str,
-    port: int,
-    username: str | None = None,
-    password: str | None = None,
-    ssl_enabled: bool = False,
-) -> redis.Redis:
+def get_redis_client(host: str, port: int, username: str | None, password: str | None, ssl_enabled: bool) -> redis.Redis:
     return redis.Redis(
         host=host,
         port=port,
@@ -18,6 +12,7 @@ def get_redis_client(
         ssl=ssl_enabled,
         decode_responses=True,
     )
+
 
 def main():
     load_dotenv()

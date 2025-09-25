@@ -6,10 +6,15 @@ from enum import Enum
 
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
+from telegram.ext import (
+    Updater, CommandHandler, MessageHandler, Filters,
+    CallbackContext, ConversationHandler
+)
 
 from storage import save_qa, load_qa, clear_qa
+from redis_client import get_redis_client
 
+logger = logging.getLogger(__name__)
 
 QUIZ_FOLDER = "quiz-questions"
 _NON_WORDS_RE = re.compile(r"[^\wа-яё\- ]+", flags=re.IGNORECASE)
@@ -85,9 +90,6 @@ class States(Enum):
     ANSWERING = 2
 
 
-logger = logging.getLogger(__name__)
-
-
 def start(update: Update, context: CallbackContext):
     logger.info("Команда /start от %s", update.effective_user.id)
     keyboard = ReplyKeyboardMarkup([['Новый вопрос', 'Сдаться'], ['Мой счет']], resize_keyboard=True)
@@ -106,20 +108,21 @@ def handle_new_question_request(update: Update, context: CallbackContext):
         update.message.reply_text("Не удалось извлечь вопрос")
         return States.CHOOSING
 
-    save_qa(user_id, question, answer, accept)
+    # ВАЖНО: передаём redis_client первым аргументом + platform="tg"
+    save_qa(context.bot_data["redis_client"], user_id, question, answer, accept, platform="tg")
     update.message.reply_text(question)
     return States.ANSWERING
 
 def handle_solution_attempt(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
-    data = load_qa(user_id)
-    if not data:
+    current_qa = load_qa(context.bot_data["redis_client"], user_id, platform="tg")
+    if not current_qa:
         update.message.reply_text("Сначала нажми «Новый вопрос».")
         return States.CHOOSING
 
-    if is_correct(update.message.text, data["answer"], data["zachet"]):
+    if is_correct(update.message.text, current_qa["answer"], current_qa["zachet"]):
         update.message.reply_text("Правильно! Для следующего вопроса нажми «Новый вопрос».")
-        clear_qa(user_id)
+        clear_qa(context.bot_data["redis_client"], user_id, platform="tg")
         return States.CHOOSING
     else:
         update.message.reply_text("Неправильно… Попробуешь ещё раз?")
@@ -127,14 +130,14 @@ def handle_solution_attempt(update: Update, context: CallbackContext):
 
 def handle_give_up(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
-    data = load_qa(user_id)
-    if not data:
+    current_qa = load_qa(context.bot_data["redis_client"], user_id, platform="tg")
+    if not current_qa:
         update.message.reply_text("Активного вопроса нет")
         return States.CHOOSING
 
-    answer = data["answer"] or "(ответ не найден)"
+    answer = current_qa["answer"] or "(ответ не найден)"
     update.message.reply_text(f"Правильный ответ:\n{answer}")
-    clear_qa(user_id)
+    clear_qa(context.bot_data["redis_client"], user_id, platform="tg")
 
     filepath = _pick_random_qafile()
     if not filepath:
@@ -146,7 +149,7 @@ def handle_give_up(update: Update, context: CallbackContext):
         update.message.reply_text("Не удалось извлечь вопрос")
         return States.CHOOSING
 
-    save_qa(user_id, question, corr_answer, accept)
+    save_qa(context.bot_data["redis_client"], user_id, question, corr_answer, accept, platform="tg")
     update.message.reply_text(f"Следующий вопрос:\n{question}")
     return States.ANSWERING
 
@@ -156,8 +159,17 @@ def main() -> None:
     load_dotenv()
     token = os.environ["TG_BOT_TOKEN"]
 
+    redis_client = get_redis_client(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", "6379")),
+        username=os.getenv("REDIS_USERNAME"),
+        password=os.getenv("REDIS_PASSWORD"),
+        ssl_enabled=os.getenv("REDIS_SSL", "false").lower() in ("1", "true", "yes"),
+    )
+
     updater = Updater(token)
     dp = updater.dispatcher
+    dp.bot_data["redis_client"] = redis_client  # <-- доступно в любом handler'е
 
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],

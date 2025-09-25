@@ -1,53 +1,61 @@
-from redis_client import get_redis_client
-import os
+from __future__ import annotations
+from typing import Dict, Optional, List, Any
 
-redis_client = get_redis_client(
-    host=os.getenv("REDIS_HOST", "localhost"),
-    port=int(os.getenv("REDIS_PORT", "6379")),
-    username=os.getenv("REDIS_USERNAME"),
-    password=os.getenv("REDIS_PASSWORD"),
-    ssl_enabled=os.getenv("REDIS_SSL", "false").lower() in ("1", "true", "yes"),
-)
 
 def _make_key(user_id: int, platform: str, suffix: str = "") -> str:
     base = f"{platform}:{user_id}"
     return f"{base}:{suffix}" if suffix else base
 
 
-def save_question(user_id: int, question: str, platform="tg") -> None:
+def save_question(redis_client, user_id: int, question: str, platform: str = "tg") -> None:
     key = _make_key(user_id, platform, "question")
     redis_client.set(key, question, ex=24 * 3600)
 
 
-def load_question(user_id: int, platform="tg") -> str | None:
+def load_question(redis_client, user_id: int, platform: str = "tg") -> Optional[str]:
     key = _make_key(user_id, platform, "question")
     return redis_client.get(key)
 
 
-def save_qa(user_id: int, question, answer, zachet, platform="tg") -> None:
+def save_qa(
+    redis_client,
+    user_id: int,
+    question: str,
+    answer: str,
+    zachet: List[str],
+    platform: str = "tg",
+) -> None:
     key = _make_key(user_id, platform, "qa")
     redis_client.hset(
         key,
         mapping={
             "question": question,
             "answer": answer,
-            "zachet": ";".join(zachet),
+            "zachet": ";".join(zachet or []),
         },
     )
 
 
-def load_qa(user_id: int, platform="tg"):
+def load_qa(redis_client, user_id: int, platform: str = "tg") -> Optional[Dict[str, Any]]:
     key = _make_key(user_id, platform, "qa")
-    data = redis_client.hgetall(key)
-    if not data:
+    qa_record = redis_client.hgetall(key)
+    if not qa_record:
         return None
     return {
-        "question": data.get("question"),
-        "answer": data.get("answer"),
-        "zachet": data.get("zachet", "").split(";") if data.get("zachet") else [],
+        "question": qa_record.get("question"),
+        "answer": qa_record.get("answer"),
+        "zachet": qa_record.get("zachet", "").split(";") if qa_record.get("zachet") else [],
     }
 
 
-def clear_qa(user_id: int, platform="tg") -> None:
+def clear_qa(redis_client, user_id: int, platform: str = "tg") -> None:
     key = _make_key(user_id, platform, "qa")
     redis_client.delete(key)
+
+
+def main() -> None:
+    pass
+
+
+if __name__ == "__main__":
+    main()
